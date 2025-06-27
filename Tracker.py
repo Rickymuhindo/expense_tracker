@@ -6,7 +6,7 @@ import matplotlib.pyplot as plt
 
 expenses = []
 budget = 0.0
-expense_file = r'C:\Users\eliza\Downloads\expense.txt'
+expense_file = r'C:\Users\Ricky\Downloads\expense.txt'
 
 # Load previous expenses
 def load_expenses():
