@@ -1,0 +1,201 @@
+import tkinter as tk
+from tkinter import messagebox, simpledialog
+from datetime import datetime
+import os
+import json
+import matplotlib.pyplot as plt
+
+# === Globals ===
+USERS_FILE = "users.json"
+DATA_FOLDER = "expenses"
+os.makedirs(DATA_FOLDER, exist_ok=True)
+
+current_user = None
+current_role = None
+budget = 0.0
+expenses = []
+
+# === Authentication ===
+def load_users():
+    if os.path.exists(USERS_FILE):
+        with open(USERS_FILE, "r") as f:
+            return json.load(f)
+    return {}
+
+def save_users(users):
+    with open(USERS_FILE, "w") as f:
+        json.dump(users, f)
+
+def authenticate():
+    global current_user, current_role, budget
+
+    users = load_users()
+    username = simpledialog.askstring("Login", "Enter your username:")
+    if username is None:
+        exit()
+
+    if username not in users:
+        if messagebox.askyesno("New User", f"{username} not found. Create new account?"):
+            role = simpledialog.askstring("Role", "Enter role (user/admin):")
+            users[username] = {"role": role.lower(), "budget": 0.0}
+            save_users(users)
+        else:
+            exit()
+
+    current_user = username
+    current_role = users[username]["role"]
+    budget = users[username].get("budget", 0.0)
+
+# === File Handling ===
+def get_user_file():
+    return os.path.join(DATA_FOLDER, f"{current_user}_expenses.txt")
+
+def load_expenses():
+    global expenses
+    expenses = []
+    if os.path.exists(get_user_file()):
+        with open(get_user_file(), "r") as f:
+            for line in f:
+                try:
+                    amount, category, description, date = line.strip().split(",")
+                    expenses.append({
+                        "amount": float(amount),
+                        "category": category,
+                        "description": description,
+                        "date": date
+                    })
+                except ValueError:
+                    continue
+
+def save_expenses():
+    with open(get_user_file(), "w") as f:
+        for expense in expenses:
+            f.write(f"{expense['amount']},{expense['category']},{expense['description']},{expense['date']}\n")
+    messagebox.showinfo("Save", "Expenses saved successfully!")
+
+# === Expense Operations ===
+def add_expense():
+    try:
+        amount = float(amount_entry.get())
+        category = category_entry.get()
+        description = description_entry.get()
+        date = date_entry.get() or datetime.today().strftime('%Y-%m-%d')
+        expenses.append({
+            "amount": amount,
+            "category": category,
+            "description": description,
+            "date": date
+        })
+        clear_entries()
+        update_expense_list()
+        messagebox.showinfo("Success", "Expense added.")
+    except ValueError:
+        messagebox.showerror("Error", "Please enter a valid amount.")
+
+def clear_entries():
+    amount_entry.delete(0, tk.END)
+    category_entry.delete(0, tk.END)
+    description_entry.delete(0, tk.END)
+    date_entry.delete(0, tk.END)
+
+def update_expense_list():
+    expense_listbox.delete(0, tk.END)
+    for i, expense in enumerate(expenses, 1):
+        item = f"{i}. ${expense['amount']:.2f} | {expense['category']} | {expense['description']} | {expense['date']}"
+        expense_listbox.insert(tk.END, item)
+
+def show_summary():
+    summary = {}
+    for expense in expenses:
+        summary[expense['category']] = summary.get(expense['category'], 0) + expense['amount']
+
+    if not summary:
+        messagebox.showinfo("Summary", "No expenses to show.")
+        return
+
+    categories = list(summary.keys())
+    amounts = list(summary.values())
+    plt.figure(figsize=(6, 6))
+    plt.pie(amounts, labels=categories, autopct='%1.1f%%', startangle=140)
+    plt.title("Expenses by Category")
+    plt.tight_layout()
+    plt.show()
+
+def set_budget():
+    global budget
+    try:
+        value = simpledialog.askfloat("Set Budget", "Enter your monthly budget:")
+        if value is not None:
+            budget = value
+            users = load_users()
+            users[current_user]["budget"] = budget
+            save_users(users)
+            messagebox.showinfo("Budget", f"Budget set to ${budget:.2f}")
+    except Exception:
+        messagebox.showerror("Error", "Invalid input.")
+
+def view_remaining_budget():
+    total_spent = sum(exp['amount'] for exp in expenses)
+    remaining = budget - total_spent
+    messagebox.showinfo("Budget Status",
+                        f"Budget: ${budget:.2f}\nSpent: ${total_spent:.2f}\nRemaining: ${remaining:.2f}")
+
+# === Admin View ===
+def admin_view_all():
+    if current_role != "admin":
+        messagebox.showerror("Access Denied", "This feature is for admins only.")
+        return
+
+    users = load_users()
+    report = ""
+    for user in users:
+        filepath = os.path.join(DATA_FOLDER, f"{user}_expenses.txt")
+        total = 0.0
+        if os.path.exists(filepath):
+            with open(filepath) as f:
+                for line in f:
+                    try:
+                        total += float(line.strip().split(",")[0])
+                    except:
+                        continue
+        report += f"{user}: ${total:.2f}\n"
+
+    messagebox.showinfo("All Users Summary", report)
+
+# === GUI Setup ===
+authenticate()
+load_expenses()
+
+root = tk.Tk()
+root.title(f"Expense Tracker - {current_user.title()} ({current_role})")
+
+tk.Label(root, text="Amount ($):").grid(row=0, column=0, sticky="e")
+tk.Label(root, text="Category:").grid(row=1, column=0, sticky="e")
+tk.Label(root, text="Description:").grid(row=2, column=0, sticky="e")
+tk.Label(root, text="Date (YYYY-MM-DD):").grid(row=3, column=0, sticky="e")
+
+amount_entry = tk.Entry(root)
+category_entry = tk.Entry(root)
+description_entry = tk.Entry(root)
+date_entry = tk.Entry(root)
+
+amount_entry.grid(row=0, column=1, padx=5, pady=2)
+category_entry.grid(row=1, column=1, padx=5, pady=2)
+description_entry.grid(row=2, column=1, padx=5, pady=2)
+date_entry.grid(row=3, column=1, padx=5, pady=2)
+
+tk.Button(root, text="Add Expense", command=add_expense).grid(row=4, column=0, pady=5)
+tk.Button(root, text="Show Summary", command=show_summary).grid(row=4, column=1, pady=5)
+tk.Button(root, text="Set Budget", command=set_budget).grid(row=5, column=0, pady=5)
+tk.Button(root, text="View Remaining", command=view_remaining_budget).grid(row=5, column=1, pady=5)
+
+if current_role == "admin":
+    tk.Button(root, text="Admin: View All Users", command=admin_view_all).grid(row=6, column=0, columnspan=2, pady=5)
+
+tk.Button(root, text="Save & Exit", command=lambda: [save_expenses(), root.destroy()]).grid(row=7, column=0, columnspan=2, pady=10)
+
+expense_listbox = tk.Listbox(root, width=60)
+expense_listbox.grid(row=8, column=0, columnspan=2, padx=5, pady=10)
+
+update_expense_list()
+root.mainloop()
